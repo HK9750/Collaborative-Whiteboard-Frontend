@@ -1,9 +1,16 @@
-const App = () => {
+import React from "react";
+import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
+import Home from "./pages/Home";
+import Room from "./pages/Room";
+
+const App: React.FC = () => {
   return (
-    <>
-      <h1 className="text-red-700">React App</h1>
-      <p>React app with TypeScript</p>
-    </>
+    <Router>
+      <Routes>
+        <Route path="/" element={<Home />} />
+        <Route path="/room/:roomId" element={<Room />} />
+      </Routes>
+    </Router>
   );
 };
 
