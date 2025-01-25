@@ -37,7 +37,6 @@ const useWebRTC = (socket: Socket | null, roomId: string) => {
     const peerConnection = initializePeerConnection();
     if (!peerConnection) return;
 
-    // Handle incoming data channel
     peerConnection.ondatachannel = (event) => {
       const channel = event.channel;
       dataChannelRef.current = channel;

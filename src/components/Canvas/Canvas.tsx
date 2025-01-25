@@ -12,128 +12,110 @@ interface CanvasProps {
 const Canvas = forwardRef<HTMLCanvasElement, CanvasProps>(
   ({ brushColor, brushSize, tool, sendDrawingData, drawingHistory }, ref) => {
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
-    const contextRef = useRef<CanvasRenderingContext2D | null>(null);
     const isDrawing = useRef(false);
 
-    // Initialize canvas
+    // Initialize canvas and resize
     useEffect(() => {
       const canvas = canvasRef.current;
       if (!canvas) return;
 
-      const resizeCanvas = () => {
-        const { offsetWidth, offsetHeight } = canvas;
-        canvas.width = offsetWidth;
-        canvas.height = offsetHeight;
+      const context = canvas.getContext("2d");
+      if (!context) return;
 
-        // Reset canvas background to white
-        const context = canvas.getContext("2d");
-        if (context) {
-          context.fillStyle = "white";
-          context.fillRect(0, 0, canvas.width, canvas.height);
-        }
+      // Resize canvas dynamically
+      const resizeCanvas = () => {
+        canvas.width = canvas.offsetWidth;
+        canvas.height = canvas.offsetHeight;
+
+        // Re-draw history on resize
+        context.fillStyle = "white";
+        context.fillRect(0, 0, canvas.width, canvas.height);
+        drawingHistory.forEach((data) => drawOnCanvas(data, context));
       };
 
       resizeCanvas();
-      const context = canvas.getContext("2d");
-      if (context) {
-        context.lineCap = "round";
-        context.lineJoin = "round";
-        contextRef.current = context;
-      }
 
+      // Listen for window resize
       window.addEventListener("resize", resizeCanvas);
       return () => window.removeEventListener("resize", resizeCanvas);
-    }, []);
-
-    // Redraw canvas when history changes
-    useEffect(() => {
-      const canvas = canvasRef.current;
-      const context = contextRef.current;
-      if (!canvas || !context) return;
-
-      // Clear canvas and set white background
-      context.fillStyle = "white";
-      context.fillRect(0, 0, canvas.width, canvas.height);
-
-      // Replay drawing history
-      drawingHistory.forEach((data) => {
-        if (data.type === "start") {
-          context.beginPath();
-          context.moveTo(data.x, data.y);
-        } else {
-          context.lineWidth = data.size;
-          context.strokeStyle = data.tool === "eraser" ? "white" : data.color;
-          context.lineTo(data.x, data.y);
-          context.stroke();
-        }
-      });
     }, [drawingHistory]);
 
-    const startDrawing = useCallback(
-      (e: React.MouseEvent) => {
-        isDrawing.current = true;
-        const { offsetX, offsetY } = e.nativeEvent;
-        contextRef.current?.beginPath();
-        contextRef.current?.moveTo(offsetX, offsetY);
+    // Draw on the canvas
+    const drawOnCanvas = useCallback((data: DrawingData, context: CanvasRenderingContext2D) => {
+      context.lineWidth = data.size;
+      context.strokeStyle = data.tool === "eraser" ? "white" : data.color;
+      context.lineCap = "round";
+      context.lineJoin = "round";
 
-        sendDrawingData({
-          x: offsetX,
-          y: offsetY,
-          type: "start",
-          color: brushColor,
-          size: brushSize,
-          tool,
-        });
-      },
-      [brushColor, brushSize, tool, sendDrawingData]
-    );
-
-    const draw = useCallback(
-      (e: React.MouseEvent) => {
-        if (!isDrawing.current || !contextRef.current) return;
-
-        const { offsetX, offsetY } = e.nativeEvent;
-        contextRef.current.lineWidth = brushSize;
-        contextRef.current.strokeStyle =
-          tool === "eraser" ? "white" : brushColor;
-        contextRef.current.lineTo(offsetX, offsetY);
-        contextRef.current.stroke();
-
-        sendDrawingData({
-          x: offsetX,
-          y: offsetY,
-          type: "draw",
-          color: brushColor,
-          size: brushSize,
-          tool,
-        });
-      },
-      [brushColor, brushSize, tool, sendDrawingData]
-    );
-
-    const endDrawing = useCallback(() => {
-      isDrawing.current = false;
-      contextRef.current?.closePath();
+      if (data.type === "start") {
+        context.beginPath();
+        context.moveTo(data.x, data.y);
+      } else if (data.type === "draw") {
+        context.lineTo(data.x, data.y);
+        context.stroke();
+      }
     }, []);
+
+    // Update canvas on history changes
+    useEffect(() => {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+
+      const context = canvas.getContext("2d");
+      if (!context) return;
+
+      // Re-draw the full history
+      context.clearRect(0, 0, canvas.width, canvas.height);
+      context.fillStyle = "white";
+      context.fillRect(0, 0, canvas.width, canvas.height);
+      drawingHistory.forEach((data) => drawOnCanvas(data, context));
+    }, [drawingHistory, drawOnCanvas]);
+
+    // Handle mouse events
+    const handleMouseDown = (event: React.MouseEvent<HTMLCanvasElement>) => {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+
+      const rect = canvas.getBoundingClientRect();
+      const x = event.clientX - rect.left;
+      const y = event.clientY - rect.top;
+
+      const drawingData: DrawingData = { x, y, type: "start", size: brushSize, color: brushColor, tool };
+      sendDrawingData(drawingData);
+      isDrawing.current = true;
+    };
+
+    const handleMouseMove = (event: React.MouseEvent<HTMLCanvasElement>) => {
+      if (!isDrawing.current) return;
+
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+
+      const rect = canvas.getBoundingClientRect();
+      const x = event.clientX - rect.left;
+      const y = event.clientY - rect.top;
+
+      const drawingData: DrawingData = { x, y, type: "draw", size: brushSize, color: brushColor, tool };
+      sendDrawingData(drawingData);
+    };
+
+    const handleMouseUp = () => {
+      isDrawing.current = false;
+    };
 
     return (
       <canvas
         ref={(node) => {
-          // Pass the ref from forwardRef and fallback to canvasRef
-          if (node) {
-            canvasRef.current = node;
-            if (ref) {
-              if (typeof ref === "function") ref(node);
-              else ref.current = node;
-            }
-          }
+          canvasRef.current = node;
+          if (typeof ref === "function") ref(node);
+          else if (ref) ref.current = node;
         }}
-        className="w-full h-full border border-gray-300 cursor-crosshair"
-        onMouseDown={startDrawing}
-        onMouseMove={draw}
-        onMouseUp={endDrawing}
-        onMouseLeave={endDrawing}
-      />
+        className="w-full h-full cursor-crosshair"
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseUp}
+      ></canvas>
     );
   }
 );

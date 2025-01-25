@@ -16,7 +16,6 @@ const useDrawing = (
   useEffect(() => {
     if (!socket) return;
 
-    // Request drawing history when joining
     socket.emit("request-history", { roomId });
 
     socket.on("drawing-history", (history: DrawingData[]) => {
